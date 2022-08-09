@@ -1382,13 +1382,13 @@ public class MaxwellConfig extends AbstractConfig {
 			}
 
 			this.replicationMysql = new MaxwellMysqlConfig(
-					this.maxwellMysql.host,
-					this.maxwellMysql.port,
-					null,
-					this.maxwellMysql.user,
-					this.maxwellMysql.password,
-					this.maxwellMysql.sslMode,
-					this.maxwellMysql.enableHeartbeat
+				this.maxwellMysql.host,
+				this.maxwellMysql.port,
+				null,
+				this.maxwellMysql.user,
+				this.maxwellMysql.password,
+				this.maxwellMysql.sslMode,
+				this.maxwellMysql.enableHeartbeat
 			);
 
 			this.replicationMysql.jdbcOptions = this.maxwellMysql.jdbcOptions;
