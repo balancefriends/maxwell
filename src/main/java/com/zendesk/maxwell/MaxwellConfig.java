@@ -276,6 +276,11 @@ public class MaxwellConfig extends AbstractConfig {
 	public String pubsubEmulator;
 
 	/**
+	 * {@link com.zendesk.maxwell.producer.MaxwellPubsubProducer} use message ordering key
+	 */
+	public boolean pubsubUseOrderingKey;
+
+	/**
 	 * {@link com.zendesk.maxwell.producer.MaxwellBigQueryProducer} project id
 	 */
 	public String bigQueryProjectId;
@@ -873,7 +878,8 @@ public class MaxwellConfig extends AbstractConfig {
 				.withRequiredArg().ofType(Long.class);
 		parser.accepts( "pubsub_emulator", "pubsub emulator host to use. default: null" )
 				.withOptionalArg();
-
+		parser.accepts( "pubsub_use_ordering_key", "use pubsub message ordering key. default: false" )
+				.withOptionalArg().ofType(Boolean.class);
 		parser.section( "output" );
 
 		parser.accepts( "output_binlog_position", "include 'position' (binlog position) field. default: false" )
@@ -1073,6 +1079,7 @@ public class MaxwellConfig extends AbstractConfig {
 		this.pubsubMaxRpcTimeout 		 		= Duration.ofSeconds(fetchLongOption("pubsub_max_rpc_timeout", options, properties, 600L));
 		this.pubsubTotalTimeout 		 		= Duration.ofSeconds(fetchLongOption("pubsub_total_timeout", options, properties, 600L));
 		this.pubsubEmulator						= fetchStringOption("pubsub_emulator", options, properties, null);
+		this.pubsubUseOrderingKey						= fetchBooleanOption("pubsub_use_ordering_key", options, properties, false);
 
 		this.rabbitmqHost           		= fetchStringOption("rabbitmq_host", options, properties, null);
 		this.rabbitmqPort 			= fetchIntegerOption("rabbitmq_port", options, properties, null);

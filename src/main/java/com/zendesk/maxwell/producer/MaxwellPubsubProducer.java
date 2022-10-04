@@ -20,6 +20,8 @@ import com.google.pubsub.v1.ProjectTopicName;
 import com.google.pubsub.v1.PubsubMessage;
 import com.zendesk.maxwell.MaxwellContext;
 import com.zendesk.maxwell.monitoring.Metrics;
+import com.zendesk.maxwell.producer.partitioners.MaxwellKinesisPartitioner;
+import com.zendesk.maxwell.producer.partitioners.MaxwellPubsubPartitioner;
 import com.zendesk.maxwell.replication.Position;
 import com.zendesk.maxwell.row.RowMap;
 import com.zendesk.maxwell.schema.ddl.DDLMap;
@@ -101,7 +103,7 @@ public class MaxwellPubsubProducer extends AbstractProducer {
   private final ArrayBlockingQueue<RowMap> queue;
   private final MaxwellPubsubProducerWorker worker;
 
-  public MaxwellPubsubProducer(MaxwellContext context, String pubsubProjectId,
+	public MaxwellPubsubProducer(MaxwellContext context, String pubsubProjectId,
                                String pubsubTopic, String ddlPubsubTopic, String pubsubEmulator)
                                throws IOException {
     super(context);
@@ -139,6 +141,8 @@ class MaxwellPubsubProducerWorker
   private Thread thread;
   private StoppableTaskState taskState;
 
+	private final MaxwellPubsubPartitioner partitioner;
+
   public MaxwellPubsubProducerWorker(MaxwellContext context,
                                      String pubsubProjectId, String pubsubTopic,
                                      String ddlPubsubTopic,
@@ -154,7 +158,7 @@ class MaxwellPubsubProducerWorker
         .setRequestByteThreshold(context.getConfig().pubsubRequestBytesThreshold)
         .setDelayThreshold(context.getConfig().pubsubPublishDelayThreshold)
         .build();
-    
+
     // Retry settings control how the publisher handles retryable failures
     RetrySettings retrySettings =
         RetrySettings.newBuilder()
@@ -166,10 +170,11 @@ class MaxwellPubsubProducerWorker
             .setMaxRpcTimeout(context.getConfig().pubsubMaxRpcTimeout)
             .setTotalTimeout(context.getConfig().pubsubTotalTimeout)
             .build();
-        
+
     this.projectId = pubsubProjectId;
     this.topic = ProjectTopicName.of(pubsubProjectId, pubsubTopic);
-    Builder pubsubBuilder = Publisher.newBuilder(this.topic).setBatchingSettings(batchingSettings).setRetrySettings(retrySettings);
+    Builder pubsubBuilder = Publisher.newBuilder(this.topic).setBatchingSettings(batchingSettings).setRetrySettings(retrySettings)
+				.setEnableMessageOrdering(context.getConfig().pubsubUseOrderingKey);
 
     if (pubsubEmulator != null) {
       ManagedChannel channel = ManagedChannelBuilder.forTarget(pubsubEmulator).usePlaintext().build();
@@ -181,7 +186,7 @@ class MaxwellPubsubProducerWorker
     }
 
     this.pubsub = pubsubBuilder.build();
-    
+
     if ( context.getConfig().outputConfig.outputDDL == true &&
          ddlPubsubTopic != pubsubTopic ) {
       this.ddlTopic = ProjectTopicName.of(pubsubProjectId, ddlPubsubTopic);
@@ -195,6 +200,11 @@ class MaxwellPubsubProducerWorker
 
     this.queue = queue;
     this.taskState = new StoppableTaskState("MaxwellPubsubProducerWorker");
+
+		String partitionKey = context.getConfig().producerPartitionKey;
+		String partitionColumns = context.getConfig().producerPartitionColumns;
+		String partitionFallback = context.getConfig().producerPartitionFallback;
+		this.partitioner = new MaxwellPubsubPartitioner(partitionKey, partitionColumns, partitionFallback);
   }
 
   @Override
@@ -221,7 +231,12 @@ class MaxwellPubsubProducerWorker
       throws Exception {
     String message = r.toJSON(outputConfig);
     ByteString data = ByteString.copyFromUtf8(message);
-    PubsubMessage pubsubMessage = PubsubMessage.newBuilder().setData(data).build();
+		PubsubMessage.Builder pubsubMessageBuilder = PubsubMessage.newBuilder()
+				.setData(data);
+		if ( context.getConfig().pubsubUseOrderingKey ) {
+			pubsubMessageBuilder.setOrderingKey(this.partitioner.getHashString(r));
+		}
+    PubsubMessage pubsubMessage = pubsubMessageBuilder.build();
 
     if ( r instanceof DDLMap ) {
 	  ApiFuture<String> apiFuture = ddlPubsub.publish(pubsubMessage);
